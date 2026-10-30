@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loop Station Simulation</title>
+<style>
+:root {
+  --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a64; --line: #e3e1da;
+  --accent: #3b5bdb; --ok: #2f9e44; --warn: #e8890c; --bad: #e03131; --idle: #adb5bd;
+  --chip: #f1f0eb; --run: #dbe4ff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151514; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9a9890; --line: #33322f;
+    --accent: #748ffc; --ok: #51cf66; --warn: #ffa94d; --bad: #ff6b6b; --idle: #5c5f66;
+    --chip: #2a2a27; --run: #26305a;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #151514; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9a9890; --line: #33322f;
+  --accent: #748ffc; --ok: #51cf66; --warn: #ffa94d; --bad: #ff6b6b; --idle: #5c5f66;
+  --chip: #2a2a27; --run: #26305a;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { position: sticky; top: 0; z-index: 2; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+header h1 { font-size: 16px; margin: 0; }
+.clock { font-variant-numeric: tabular-nums; font-weight: 600; }
+.controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+button, select { font: inherit; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--chip); color: var(--ink); cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+label.tog { display: inline-flex; gap: 4px; align-items: center; font-size: 13px; color: var(--muted); }
+main { padding: 16px; display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); max-width: 1500px; margin: 0 auto; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; display: flex; justify-content: space-between; gap: 8px; }
+.intro { grid-column: 1 / -1; color: var(--muted); }
+.intro p { margin: 0 0 4px; }
+.flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; font-size: 13px; }
+.flow span.box { border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; background: var(--chip); color: var(--ink); }
+.loop { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+.loop.running { background: var(--run); }
+.loop .top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.loop .name { font-weight: 600; }
+.loop .meta { color: var(--muted); font-size: 12px; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; background: var(--idle); }
+.dot.running { background: var(--accent); } .dot.idle { background: var(--ok); } .dot.stopped { background: var(--bad); } .dot.late { background: var(--warn); }
+.bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.steps { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.steps span { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--chip); color: var(--muted); }
+.steps span.done { color: var(--ok); } .steps span.now { color: var(--accent); font-weight: 600; } .steps span.fail { color: var(--bad); } .steps span.skip { color: var(--warn); }
+.loop .acts { margin-top: 6px; display: flex; gap: 6px; }
+.loop .acts button { font-size: 12px; padding: 2px 8px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.tabs button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+ul.list { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow: auto; }
+ul.list li { border-bottom: 1px solid var(--line); padding: 5px 0; font-size: 13px; }
+ul.list li:last-child { border-bottom: 0; }
+.tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 4px; background: var(--chip); color: var(--muted); margin-left: 4px; }
+.tag.open { color: var(--accent); } .tag.resolved { color: var(--ok); } .tag.later { color: var(--warn); } .tag.dup { color: var(--bad); } .tag.merged { color: var(--muted); }
+.status { font-weight: 700; }
+.status.on { color: var(--ok); } .status.risk { color: var(--warn); } .status.off { color: var(--bad); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13px; }
+.kv b { font-weight: 600; }
+.t { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; margin-right: 6px; }
+.who { font-weight: 600; }
+.ev-bad { color: var(--bad); } .ev-warn { color: var(--warn); } .ev-ok { color: var(--ok); }
+.small { font-size: 12px; color: var(--muted); }
+.ownerbtns { display: flex; flex-wrap: wrap; gap: 6px; }
+@media (max-width: 520px) { main { padding: 16px; grid-template-columns: 1fr; } header { padding: 10px 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Loop Station</h1>
+  <span class="clock" id="clock">Day 1 00:00</span>
+  <div class="controls">
+    <button class="primary" id="play">Play</button>
+    <button id="step">+10 min</button>
+    <select id="speed" aria-label="Speed">
+      <option value="5">5 min/s</option>
+      <option value="15" selected>15 min/s</option>
+      <option value="60">1 h/s</option>
+      <option value="240">4 h/s</option>
+    </select>
+    <button id="reset">Reset</button>
+  </div>
+  <div class="controls">
+    <label class="tog"><input type="checkbox" id="docker" checked> Docker answers</label>
+    <label class="tog"><input type="checkbox" id="safenum"> Re-read next issue number before write</label>
+  </div>
+</header>
+
+<main>
+  <div class="intro">
+    <p>This page simulates the factory in <code>SPEC.md</code>. Worker loops run on cron schedules. They share files: the mailbox and git. The manager checks them every 30 minutes and updates the board. You are the owner.</p>
+    <div class="flow">
+      <span class="box">Owner</span> → <span class="box">inbox</span> → <span class="box">worker loops</span> → <span class="box">issues · ideas · retro · git</span> → <span class="box">manager check</span> → <span class="box">loop board</span> → <span class="box">Owner</span>
+    </div>
+  </div>
+
+  <section>
+    <h2>Worker loops <span class="small" id="loopsum"></span></h2>
+    <div id="loops"></div>
+  </section>
+
+  <section>
+    <h2>Shared files <span class="small">target project</span></h2>
+    <div class="tabs" id="tabs"></div>
+    <ul class="list" id="files"></ul>
+  </section>
+
+  <section>
+    <h2>Loop board <span class="small" id="boardat">no check yet</span></h2>
+    <div id="board"></div>
+    <h2 style="margin-top:12px">Manager log</h2>
+    <ul class="list" id="mlog" style="max-height:220px"></ul>
+  </section>
+
+  <section>
+    <h2>Owner</h2>
+    <p class="small">Phase rule: <b id="phasename"></b></p>
+    <div class="ownerbtns">
+      <button id="msgall">Send a message to all loops</button>
+      <button id="phase">Start phase 2</button>
+    </div>
+    <p class="small">To stop a session, use <b>Close session</b> on a loop. To start it again from <code>loop.json</code>, use <b>Restart</b>.</p>
+    <h2 style="margin-top:12px">Reports to the owner</h2>
+    <ul class="list" id="reports" style="max-height:260px"></ul>
+  </section>
+
+  <section style="grid-column: 1 / -1">
+    <h2>Event feed <span class="small">newest first</span></h2>
+    <ul class="list" id="feed" style="max-height:300px"></ul>
+  </section>
+</main>
+
+<script>
+// --- Model -------------------------------------------------------------------
+
+const DAY = 1440;
+const EXPIRY = 7 * DAY; // A session-only cron job expires 7 days after it starts (SCH-05).
+
+const LOOP_DEFS = [
+  { name: 'manager', kind: 'manager', every: 30, at: 13, dur: 4,
+    steps: ['Run collector', 'Read mailbox', 'List sessions', 'Find problems', 'Update board', 'Report'] },
+  { name: 'issue-fix', kind: 'fixer', every: 120, at: 7, dur: 32,
+    steps: ['Read inbox', 'Read phase', 'Pick issue', 'Write fix', 'make check', 'Local health', 'Compose health', 'Image health', 'Commit'] },
+  { name: 'bdr-review', kind: 'reviewer', every: 120, at: 17, dur: 20,
+    steps: ['Read inbox', 'Read phase', 'Test BDRs as a user', 'File issues', 'Commit'] },
+  { name: 'adr-verify', kind: 'reviewer', every: 120, at: 27, dur: 14,
+    steps: ['Read inbox', 'Read phase', 'Check ADRs', 'File issues', 'Commit'] },
+  { name: 'code-quality', kind: 'reviewer', every: 360, at: 37, dur: 16,
+    steps: ['Read inbox', 'Run lint', 'Run complexity', 'Run coverage', 'File issues', 'Commit'] },
+  { name: 'ideas', kind: 'ideas', every: 360, at: 47, dur: 10,
+    steps: ['Read inbox', 'Research', 'Write batch', 'Commit'] },
+  { name: 'retro', kind: 'retro', every: 120, at: 23, dur: 8,
+    steps: ['Read inbox', 'Review runs', 'Write suggestions', 'Commit'] },
+  { name: 'progress-brief', kind: 'brief', every: 240, at: 0, dur: 3,
+    steps: ['Read board', 'Write brief'] },
+];
+
+const JUDGE_STEPS = ['make check', 'Local health', 'Compose health', 'Image health'];
+
+const TITLES = {
+  'bdr-review': [
+    ['feature', 'The teach start flow has no topic step'],
+    ['feature', 'The quiz has no score history'],
+    ['defect', 'The feed shows a stale rank after a vote'],
+    ['defect', 'The chat loses the last turn on reload'],
+    ['feature', 'The library does not list sources'],
+    ['defect', 'The CLI and the API return different errors'],
+  ],
+  'adr-verify': [
+    ['security', 'The server listens on all network interfaces'],
+    ['security', 'DNS rebinding bypasses the origin check'],
+    ['tooling', 'The delivery scanners are missing'],
+    ['feature', 'Speech for dictated turns is not implemented'],
+  ],
+  'code-quality': [
+    ['tooling', 'Enable the complexity linters'],
+    ['tooling', 'CI gates differ from make check'],
+    ['defect', 'The health check does not close the body'],
+    ['test', 'The smoke test folder is empty'],
+    ['defect', 'A function has a cyclomatic complexity of 14'],
+  ],
+};
+
+const IDEAS = ['Daily topic digest', 'Share a quiz result', 'Offline mode', 'Voice replies', 'Streaks', 'Topic follow', 'Source previews', 'Team rooms'];
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+let S; // The full state of the simulation.
+
+function hex(n) { let s = ''; for (let i = 0; i < n; i++) s += Math.floor(S.rng() * 16).toString(16); return s; }
+function pick(a) { return a[Math.floor(S.rng() * a.length)]; }
+function pad(n) { return String(n).padStart(3, '0'); }
+
+function newSession(loop) {
+  loop.alive = true;
+  loop.reason = '';
+  loop.session = hex(8);
+  loop.sessionStart = S.t;
+  loop.warnedExpiry = false;
+}
+
+function reset() {
+  S = {
+    t: 0, rng: mulberry32(42), phase: 1,
+    docker: document.getElementById('docker').checked,
+    safeNum: document.getElementById('safenum').checked,
+    issues: [], inbox: [], ideas: [], retro: [], commits: [],
+    events: [], mlog: [], reports: [], board: null,
+    lastCheck: -1, lastRetro: 0, msgSeq: 0, flagged: {},
+  };
+  S.loops = LOOP_DEFS.map(d => ({ ...d, run: null, runs: 0, missed: 0, lastEnd: null, uncommitted: 0 }));
+  S.loops.forEach(newSession);
+  // Seed issues, as the builder session left them.
+  addIssue('builder', 'tooling', 'make check fails on known vulnerabilities', true);
+  addIssue('builder', 'feature', 'Only BDR-001 AC-1 exists', true);
+  addIssue('builder', 'test', 'The acceptance test folder is empty', true);
+  addIssue('builder', 'defect', 'The compose dev server is unreachable', true);
+  S.commits.push({ t: 0, who: 'builder', msg: 'feat: first version of the CLI, MCP, and API' });
+  event('builder', 'The builder session made the first version. It has no loop.');
+  render();
+}
+
+// --- Rules -------------------------------------------------------------------
+
+function allowedNow(issue) {
+  // PHS-04: phase 1 allows defects, tests, tooling, and security. Phase 2 also allows features.
+  if (S.phase >= 2) return true;
+  return issue.kind !== 'feature';
+}
+
+function nextFreeNumber() {
+  return S.issues.reduce((m, i) => Math.max(m, i.num), 0) + 1;
+}
+
+function addIssue(by, kind, title, safe, snapNum) {
+  const num = safe ? nextFreeNumber() : snapNum;
+  const issue = { num, by, kind, title, status: 'open', later: !allowedNow({ kind }), t: S.t };
+  S.issues.push(issue);
+  return issue;
+}
+
+function sendMsg(to, from, text, action) {
+  const m = { id: ++S.msgSeq, to, from, text, action, status: 'Open', log: [], t: S.t };
+  S.inbox.push(m);
+  return m;
+}
+
+function workerNames() {
+  return S.loops.filter(l => !['manager', 'progress-brief'].includes(l.name)).map(l => l.name);
+}
+
+// --- Events and time ---------------------------------------------------------
+
+function fmt(t) {
+  const d = Math.floor(t / DAY) + 1, m = Math.floor(t % DAY);
+  return `D${d} ${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
+
+function event(who, text, cls) {
+  S.events.unshift({ t: S.t, who, text, cls });
+  if (S.events.length > 300) S.events.pop();
+}
+
+function commit(loop, msg) {
+  S.commits.unshift({ t: S.t, who: loop.name, msg });
+  event(loop.name, `Commit on main: ${msg}`);
+}
+
+function crossed(prev, now, every, at) {
+  const k = Math.floor((now - at) / every);
+  const s = k * every + at;
+  return s > prev && s <= now;
+}
+
+function advance(dt) {
+  const prev = S.t;
+  S.t += dt;
+  for (const loop of S.loops) {
+    if (loop.alive && S.t - loop.sessionStart >= EXPIRY) {
+      loop.alive = false;
+      loop.reason = 'cron job expired';
+      loop.run = null;
+      event(loop.name, 'The cron job expired after 7 days. The loop stopped.', 'ev-bad');
+    }
+    if (loop.run && S.t >= loop.run.start + loop.dur) finishRun(loop);
+    if (loop.alive && crossed(prev, S.t, loop.every, loop.at)) {
+      if (loop.run) {
+        loop.missed++;
+        event(loop.name, 'The run time came, but the last run is still active. The run is missed.', 'ev-warn');
+      } else {
+        startRun(loop);
+      }
+    }
+  }
+}
+
+// --- Runs --------------------------------------------------------------------
+
+function startRun(loop) {
+  const run = { start: S.t, ctx: {} };
+  if (loop.kind === 'fixer') {
+    // RUN-03: pick exactly one open issue that the phase allows.
+    const cand = S.issues.filter(i => i.status === 'open' && !i.later && allowedNow(i));
+    run.ctx.issue = cand.length ? cand[0] : null;
+    run.ctx.judge = run.ctx.issue ? judgeOutcome(run.ctx.issue) : null;
+  }
+  if (loop.kind === 'reviewer') run.ctx.snapNum = nextFreeNumber(); // An unsafe loop reads the number here.
+  loop.run = run;
+  event(loop.name, 'Run started.');
+}
+
+function judgeOutcome(issue) {
+  // VER-02 to VER-07: the judge runs each step itself. A skipped step is a failure.
+  const container = issue.kind !== 'test';
+  const res = [];
+  let failed = false;
+  for (const step of JUDGE_STEPS) {
+    if (failed) { res.push('-'); continue; }
+    const isContainer = step === 'Compose health' || step === 'Image health';
+    if (isContainer && !container) { res.push('n/a'); continue; }
+    if (isContainer && !S.docker) { res.push('SKIPPED'); failed = true; continue; }
+    if (S.rng() < 0.12) { res.push('FAIL'); failed = true; continue; }
+    res.push('PASS');
+  }
+  return res;
+}
+
+function processInbox(loop) {
+  // INB-04 to INB-08.
+  let changed = false;
+  for (const m of S.inbox) {
+    if (m.status !== 'Open') continue;
+    if (m.to !== loop.name && m.to !== 'all') continue;
+    if (m.log.some(l => l.who === loop.name)) continue;
+    let did = 'read the message and follows it';
+    if (m.action && m.action.type === 'renumber') {
+      const iss = S.issues.find(i => i === m.action.issue);
+      if (iss) { const old = iss.num; iss.num = nextFreeNumber(); did = `renumbered ISSUE-${pad(old)} to ISSUE-${pad(iss.num)}`; }
+    }
+    if (m.action && m.action.type === 'commit' && loop.uncommitted) {
+      commit(loop, `chore: commit ${loop.uncommitted} files left from an earlier run`);
+      loop.uncommitted = 0;
+      did = 'committed the files that it left';
+    }
+    m.log.push({ who: loop.name, t: S.t, did });
+    event(loop.name, `Inbox MSG-${pad(m.id)}: ${did}.`);
+    if (m.to === loop.name) m.status = 'Done';
+    changed = true;
+  }
+  return changed;
+}
+
+function finishRun(loop) {
+  const run = loop.run;
+  loop.run = null;
+  loop.runs++;
+  loop.lastEnd = S.t;
+  if (loop.kind === 'manager') return managerCheck(loop);
+  if (loop.kind === 'brief') return progressBrief(loop);
+
+  processInbox(loop);
+  let files = 0, msg = '';
+
+  if (loop.kind === 'fixer') {
+    const iss = run.ctx.issue;
+    if (!iss || iss.status !== 'open') {
+      event(loop.name, 'No open issue that the phase allows. The run stops (PHS-05).', 'ev-warn');
+      return;
+    }
+    const res = run.ctx.judge;
+    const pass = res.every(r => r === 'PASS' || r === 'n/a');
+    if (pass) {
+      iss.status = 'resolved';
+      files = 3;
+      msg = `fix: ${iss.title.toLowerCase()} (ISSUE-${pad(iss.num)})`;
+      event(loop.name, `The judge accepted the fix for ISSUE-${pad(iss.num)}.`, 'ev-ok');
+    } else {
+      const bad = JUDGE_STEPS[res.findIndex(r => r === 'FAIL' || r === 'SKIPPED')];
+      const why = res.includes('SKIPPED') ? 'was SKIPPED (docker info did not answer)' : 'failed';
+      S.flagged['verify-' + S.t] = { kind: 'verify', issue: iss, step: bad, t: S.t };
+      files = 1;
+      msg = `test: record the failed verification of ISSUE-${pad(iss.num)}`;
+      event(loop.name, `The judge rejected the fix for ISSUE-${pad(iss.num)}: "${bad}" ${why}. The issue stays open.`, 'ev-bad');
+    }
+  }
+
+  if (loop.kind === 'reviewer') {
+    const n = S.rng() < 0.45 ? 0 : (S.rng() < 0.7 ? 1 : 2);
+    const filed = [];
+    for (let k = 0; k < n; k++) {
+      const [kind, title] = pick(TITLES[loop.name]);
+      // ISS-05: search for the same problem first.
+      const same = S.issues.find(i => i.title === title && i.status !== 'merged');
+      if (same) { event(loop.name, `Found ISSUE-${pad(same.num)} again. Updated it, no new file.`); files++; continue; }
+      const iss = addIssue(loop.name, kind, title, S.safeNum, run.ctx.snapNum + k);
+      filed.push(iss);
+      files += 2;
+    }
+    for (const iss of filed) {
+      event(loop.name, `Filed ISSUE-${pad(iss.num)}: ${iss.title}${iss.later ? ' (Phase: later)' : ''}.`);
+    }
+    if (filed.length) msg = `docs(issues): file ${filed.map(i => 'ISSUE-' + pad(i.num)).join(', ')}`;
+    else if (!files) event(loop.name, 'No new problem found.');
+  }
+
+  if (loop.kind === 'ideas') {
+    const batch = [pick(IDEAS), pick(IDEAS), pick(IDEAS)].filter((v, i, a) => a.indexOf(v) === i);
+    S.ideas.push({ t: S.t, n: S.ideas.length + 1, items: batch });
+    files = 1;
+    msg = `docs(ideas): batch ${S.ideas.length}`;
+    event(loop.name, `Wrote idea batch ${S.ideas.length}: ${batch.join(', ')}. Not built (phase rule).`);
+  }
+
+  if (loop.kind === 'retro') {
+    const since = S.events.filter(e => e.t > S.lastRetro);
+    const sug = [];
+    if (since.some(e => /judge rejected/.test(e.text))) sug.push('The judge must check every run path, and Docker must answer before a fix run.');
+    if (since.some(e => /Duplicate issue number/.test(e.text))) sug.push('A loop must read the next issue number right before it writes the file.');
+    if (since.some(e => /stopped|expired/.test(e.text))) sug.push('Loops stop with their sessions. Use a durable scheduler.');
+    if (since.some(e => /missed/.test(e.text))) sug.push('A run is longer than its interval. Make the interval longer.');
+    if (since.some(e => /left .* files without a commit/.test(e.text))) sug.push('Commit at the end of each run.');
+    if (!sug.length) { S.lastRetro = S.t; event(loop.name, 'Retrospective: no new suggestion.'); return; }
+    sug.forEach(s => S.retro.push({ t: S.t, text: s }));
+    S.lastRetro = S.t;
+    files = sug.length;
+    msg = `docs(retro): ${sug.length} suggestion(s)`;
+    event(loop.name, `Retrospective: ${sug.length} suggestion(s).`);
+  }
+
+  if (files) {
+    if (S.rng() < 0.07) {
+      // GIT-09: a loop that forgets to commit leaves work for the manager to find.
+      loop.uncommitted += files;
+      event(loop.name, `The run left ${files} files without a commit.`, 'ev-warn');
+    } else {
+      commit(loop, msg || 'chore: update loop files');
+    }
+  }
+}
+
+// --- Manager -----------------------------------------------------------------
+
+function managerCheck(mgr) {
+  const notes = [];
+  const add = (text, sev) => { notes.push({ text, sev }); S.mlog.unshift({ t: S.t, text, sev }); };
+
+  // MGR-07: stopped loops and loops close to expiry.
+  for (const l of S.loops) {
+    if (!l.alive && !S.flagged['stop-' + l.session]) {
+      S.flagged['stop-' + l.session] = true;
+      add(`${l.name} is stopped (${l.reason}). Restart it from loop.json.`, 'bad');
+    }
+    if (l.alive && !l.warnedExpiry && EXPIRY - (S.t - l.sessionStart) < DAY) {
+      l.warnedExpiry = true;
+      add(`${l.name}: the cron job expires in less than 1 day.`, 'warn');
+    }
+  }
+
+  // MGR-06: duplicate issue numbers.
+  const byNum = {};
+  S.issues.filter(i => i.status !== 'merged').forEach(i => (byNum[i.num] = byNum[i.num] || []).push(i));
+  for (const [num, list] of Object.entries(byNum)) {
+    if (list.length < 2) continue;
+    const late = list[list.length - 1];
+    const key = 'dup-' + num + '-' + late.title;
+    if (S.flagged[key]) continue;
+    S.flagged[key] = true;
+    add(`Duplicate issue number ISSUE-${pad(+num)} (${list.map(i => i.by).join(' and ')}).`, 'bad');
+    event('manager', `Duplicate issue number ISSUE-${pad(+num)}. Sent a message to ${late.by}.`, 'ev-bad');
+    sendMsg(late.by, 'manager', `Renumber your ISSUE-${pad(+num)} to the next free number.`, { type: 'renumber', issue: late });
+  }
+
+  // GIT-09: uncommitted loop work.
+  for (const l of S.loops) {
+    if (l.uncommitted && !S.flagged['unc-' + l.name + '-' + l.runs]) {
+      S.flagged['unc-' + l.name + '-' + l.runs] = true;
+      add(`${l.name} left ${l.uncommitted} files without a commit.`, 'warn');
+      if (!S.inbox.some(m => m.to === l.name && m.status === 'Open' && m.action && m.action.type === 'commit')) {
+        sendMsg(l.name, 'manager', 'Commit the files that your last run left.', { type: 'commit' });
+      }
+    }
+  }
+
+  // VER-09: failed verifications since the last check.
+  for (const [k, f] of Object.entries(S.flagged)) {
+    if (k.startsWith('verify-') && !f.seen) {
+      f.seen = true;
+      add(`Failed verification of ISSUE-${pad(f.issue.num)} at "${f.step}".`, 'warn');
+    }
+  }
+
+  // MGR-08 and INB-09: messages to all.
+  for (const m of S.inbox.filter(m => m.status === 'Open' && m.to === 'all')) {
+    const missing = workerNames().filter(n => !m.log.some(l => l.who === n));
+    if (!missing.length) { m.status = 'Done'; add(`MSG-${pad(m.id)}: every loop logged it. Closed.`, 'ok'); }
+    else if (S.t - m.t > 120 && !S.flagged['msg-' + m.id]) { S.flagged['msg-' + m.id] = true; add(`MSG-${pad(m.id)}: not logged yet by ${missing.join(', ')}.`, 'warn'); }
+  }
+
+  // PHS-06: report when the phase has no allowed work left.
+  const allowedOpen = S.issues.filter(i => i.status === 'open' && !i.later && allowedNow(i)).length;
+  if (!allowedOpen && !S.flagged['phase-done-' + S.phase]) {
+    S.flagged['phase-done-' + S.phase] = true;
+    add(`Phase ${S.phase}: no allowed work is open. The owner must decide the next phase.`, 'warn');
+  }
+
+  // MGR-10 and MGR-11: the brief.
+  const stopped = S.loops.filter(l => !l.alive).length;
+  const dups = Object.values(byNum).filter(l => l.length > 1).length;
+  const recentFail = Object.values(S.flagged).filter(f => f && f.kind === 'verify' && S.t - f.t < 120).length;
+  const unc = S.loops.filter(l => l.uncommitted).length;
+  let status = 'On track';
+  if (stopped || dups) status = 'Off track';
+  else if (recentFail || unc || !S.docker) status = 'At risk';
+
+  const open = S.issues.filter(i => i.status === 'open');
+  S.board = {
+    at: S.t, status,
+    rows: [
+      ['good', `${S.issues.filter(i => i.status === 'resolved').length} issues resolved, ${S.commits.length} commits`],
+      ['risk', `${stopped} loops stopped, ${dups} duplicate numbers, ${recentFail} failed verifications in 2 h, ${unc} loops with uncommitted files`],
+      ['next', `${allowedOpen} allowed issues open, ${open.length - allowedOpen} wait for a later phase`],
+    ],
+    loops: S.loops.map(l => ({ name: l.name, state: stateOf(l), runs: l.runs, lastEnd: l.lastEnd })),
+  };
+  S.lastCheck = S.t;
+  S.reports.unshift({ t: S.t, text: `Manager check: ${status}. ${notes.length ? notes.length + ' new finding(s).' : 'No new finding.'}`, status });
+  event('manager', `Check done: ${status}. Board updated.`, status === 'On track' ? 'ev-ok' : status === 'At risk' ? 'ev-warn' : 'ev-bad');
+}
+
+function progressBrief() {
+  const resolved = S.issues.filter(i => i.status === 'resolved').length;
+  const open = S.issues.filter(i => i.status === 'open').length;
+  const text = `Progress brief: ${resolved} resolved, ${open} open, ${S.ideas.length} idea batches, ${S.retro.length} retro suggestions, ${S.commits.length} commits.`;
+  S.reports.unshift({ t: S.t, text, status: 'brief' });
+  event('progress-brief', text);
+}
+
+function stateOf(l) {
+  if (!l.alive) return 'stopped';
+  if (l.run) return 'running';
+  if (l.missed && l.lastEnd !== null && S.t - l.lastEnd > l.every) return 'late';
+  return 'idle';
+}
+
+// --- Owner actions -----------------------------------------------------------
+
+function ownerMessage() {
+  const m = sendMsg('all', 'Owen', 'Read the new rule in CLAUDE.md before your next change.');
+  event('owner', `Sent MSG-${pad(m.id)} to all loops.`);
+  render();
+}
+
+function togglePhase() {
+  S.phase = S.phase === 1 ? 2 : 1;
+  // Only the owner changes the phase (PHS-03). Later issues become allowed in phase 2.
+  S.issues.forEach(i => { if (i.status === 'open') i.later = !allowedNow(i); });
+  event('owner', `Changed the current phase to ${S.phase}. Updated CLAUDE.md and AGENTS.md.`);
+  sendMsg('all', 'Owen', `The current phase is now ${S.phase}. Read CLAUDE.md.`);
+  render();
+}
+
+function closeSession(name) {
+  const l = S.loops.find(x => x.name === name);
+  l.alive = false; l.run = null; l.reason = 'session closed';
+  event('owner', `Closed the session of ${name}. Its cron job stopped with it.`, 'ev-bad');
+  render();
+}
+
+function restart(name) {
+  const l = S.loops.find(x => x.name === name);
+  newSession(l);
+  l.missed = 0;
+  event('owner', `Restarted ${name} from loop.json in session ${l.session}. Updated loop.json.`, 'ev-ok');
+  render();
+}
+
+// --- View --------------------------------------------------------------------
+
+let tab = 'issues';
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function nextRun(l) {
+  const k = Math.floor((S.t - l.at) / l.every) + 1;
+  return k * l.every + l.at;
+}
+
+function renderLoops() {
+  const html = S.loops.map(l => {
+    const st = stateOf(l);
+    let body = '';
+    if (l.run) {
+      const p = Math.min(1, (S.t - l.run.start) / l.dur);
+      const idx = Math.min(l.steps.length - 1, Math.floor(p * l.steps.length));
+      const judge = l.run.ctx.judge;
+      const chips = l.steps.map((s, i) => {
+        let cls = i < idx ? 'done' : i === idx ? 'now' : '';
+        const j = JUDGE_STEPS.indexOf(s);
+        if (judge && j >= 0 && i < idx) {
+          const r = judge[j];
+          cls = r === 'PASS' ? 'done' : r === 'FAIL' ? 'fail' : r === 'SKIPPED' ? 'skip' : '';
+          s = `${s}: ${r}`;
+        }
+        return `<span class="${cls}">${esc(s)}</span>`;
+      }).join('');
+      const iss = l.run.ctx.issue;
+      body = `<div class="bar"><i style="width:${(p * 100).toFixed(0)}%"></i></div>
+        ${iss ? `<div class="meta">Issue: ISSUE-${pad(iss.num)} ${esc(iss.title)}</div>` : ''}
+        <div class="steps">${chips}</div>`;
+    }
+    const meta = l.alive
+      ? `every ${l.every >= 60 ? l.every / 60 + ' h' : l.every + ' min'} at :${String(l.at % 60).padStart(2, '0')} · next ${fmt(nextRun(l))} · runs ${l.runs}${l.missed ? ' · missed ' + l.missed : ''}`
+      : `stopped: ${l.reason}`;
+    const acts = l.alive
+      ? `<button data-close="${l.name}">Close session</button>`
+      : `<button data-restart="${l.name}">Restart</button>`;
+    return `<div class="loop ${st === 'running' ? 'running' : ''}">
+      <div class="top"><span><span class="dot ${st}"></span><span class="name">${l.name}</span> <span class="tag">${l.kind}</span></span>
+      <span class="meta">${l.alive ? 'session ' + l.session : ''}</span></div>
+      <div class="meta">${meta}${l.uncommitted ? ` · <span class="ev-warn">${l.uncommitted} uncommitted</span>` : ''}</div>
+      ${body}
+      <div class="acts">${acts}</div></div>`;
+  }).join('');
+  document.getElementById('loops').innerHTML = html;
+  const alive = S.loops.filter(l => l.alive).length;
+  document.getElementById('loopsum').textContent = `${alive} of ${S.loops.length} running`;
+}
+
+function renderFiles() {
+  const counts = {
+    issues: S.issues.length, inbox: S.inbox.length, ideas: S.ideas.length,
+    retro: S.retro.length, git: S.commits.length,
+  };
+  document.getElementById('tabs').innerHTML = Object.keys(counts).map(k =>
+    `<button data-tab="${k}" class="${tab === k ? 'on' : ''}">${k === 'git' ? 'git log' : 'mailbox/' + k} (${counts[k]})</button>`).join('');
+  const byNum = {};
+  S.issues.filter(i => i.status !== 'merged').forEach(i => (byNum[i.num] = (byNum[i.num] || 0) + 1));
+  let items = [];
+  if (tab === 'issues') {
+    items = [...S.issues].sort((a, b) => a.num - b.num).map(i =>
+      `<li>ISSUE-${pad(i.num)} ${esc(i.title)}
+        <span class="tag ${i.status}">${i.status}</span><span class="tag">${i.kind}</span>
+        ${i.later && i.status === 'open' ? '<span class="tag later">Phase: later</span>' : ''}
+        ${byNum[i.num] > 1 ? '<span class="tag dup">duplicate number</span>' : ''}
+        <div class="small">by ${i.by} at ${fmt(i.t)}</div></li>`);
+  } else if (tab === 'inbox') {
+    items = [...S.inbox].reverse().map(m =>
+      `<li>MSG-${pad(m.id)} to <b>${m.to}</b> from ${m.from}: ${esc(m.text)}
+        <span class="tag ${m.status === 'Open' ? 'open' : 'resolved'}">${m.status}</span>
+        <div class="small">${m.log.length ? 'Log: ' + m.log.map(l => `${l.who} ${fmt(l.t)}`).join(' · ') : 'No log line yet'}</div></li>`);
+  } else if (tab === 'ideas') {
+    items = [...S.ideas].reverse().map(b => `<li>Batch ${b.n} (${fmt(b.t)}): ${esc(b.items.join(', '))}</li>`);
+  } else if (tab === 'retro') {
+    items = [...S.retro].reverse().map(r => `<li><span class="t">${fmt(r.t)}</span>${esc(r.text)}</li>`);
+  } else {
+    items = S.commits.slice(0, 80).map(c => `<li><span class="t">${fmt(c.t)}</span><span class="who">${c.who}</span> ${esc(c.msg)}</li>`);
+  }
+  document.getElementById('files').innerHTML = items.join('') || '<li class="small">Empty.</li>';
+}
+
+function renderBoard() {
+  const b = S.board;
+  document.getElementById('boardat').textContent = b ? `updated ${fmt(b.at)}` : 'no check yet';
+  if (!b) { document.getElementById('board').innerHTML = '<p class="small">The board shows data from the last manager check only. The first check runs at 00:13.</p>'; }
+  else {
+    const cls = b.status === 'On track' ? 'on' : b.status === 'At risk' ? 'risk' : 'off';
+    const age = S.t - b.at;
+    const stale = age > 60
+      ? `<p class="ev-bad">Stale: no manager check for ${Math.floor(age / 60)} h ${Math.floor(age % 60)} min. The data below can be wrong.</p>` : '';
+    document.getElementById('board').innerHTML = `${stale}
+      <p>Status: <span class="status ${cls}">${b.status}</span></p>
+      <div class="kv">${b.rows.map(r => `<b>${r[0]}</b><span>${esc(r[1])}</span>`).join('')}</div>
+      <p class="small" style="margin-top:8px">${b.loops.map(l => `<span class="dot ${l.state}"></span>${l.name} (${l.runs})`).join(' &nbsp; ')}</p>`;
+  }
+  document.getElementById('mlog').innerHTML = S.mlog.slice(0, 60).map(n =>
+    `<li><span class="t">${fmt(n.t)}</span><span class="ev-${n.sev}">${esc(n.text)}</span></li>`).join('') || '<li class="small">No finding yet.</li>';
+}
+
+function renderOwner() {
+  document.getElementById('phasename').textContent = S.phase === 1
+    ? 'Phase 1: defects, tests, tooling, and security only'
+    : 'Phase 2: features are allowed too';
+  document.getElementById('phase').textContent = S.phase === 1 ? 'Start phase 2' : 'Go back to phase 1';
+  document.getElementById('reports').innerHTML = S.reports.slice(0, 60).map(r => {
+    const cls = r.status === 'On track' ? 'ev-ok' : r.status === 'At risk' ? 'ev-warn' : r.status === 'Off track' ? 'ev-bad' : '';
+    return `<li><span class="t">${fmt(r.t)}</span><span class="${cls}">${esc(r.text)}</span></li>`;
+  }).join('') || '<li class="small">No report yet.</li>';
+}
+
+function renderFeed() {
+  document.getElementById('feed').innerHTML = S.events.slice(0, 120).map(e =>
+    `<li><span class="t">${fmt(e.t)}</span><span class="who">${e.who}</span> <span class="${e.cls || ''}">${esc(e.text)}</span></li>`).join('');
+}
+
+function render() {
+  document.getElementById('clock').textContent = fmt(S.t).replace('D', 'Day ');
+  renderLoops(); renderFiles(); renderBoard(); renderOwner(); renderFeed();
+}
+
+// --- Loop and controls -------------------------------------------------------
+
+let playing = false, last = 0, acc = 0;
+function frame(now) {
+  if (!playing) return;
+  const dt = Math.min(0.25, (now - last) / 1000);
+  last = now;
+  const speed = +document.getElementById('speed').value;
+  let mins = dt * speed;
+  // Advance in steps of 1 minute or less, so that no cron time is skipped.
+  while (mins > 0) { const s = Math.min(1, mins); advance(s); mins -= s; }
+  acc += dt;
+  if (acc > 0.1) { acc = 0; render(); }
+  requestAnimationFrame(frame);
+}
+
+document.getElementById('play').onclick = e => {
+  playing = !playing;
+  e.target.textContent = playing ? 'Pause' : 'Play';
+  if (playing) { last = performance.now(); requestAnimationFrame(frame); }
+};
+document.getElementById('step').onclick = () => { for (let i = 0; i < 10; i++) advance(1); render(); };
+document.getElementById('reset').onclick = reset;
+document.getElementById('docker').onchange = e => { S.docker = e.target.checked; event('owner', S.docker ? 'Docker answers again.' : 'Docker stopped. docker info gives no answer.', S.docker ? 'ev-ok' : 'ev-warn'); render(); };
+document.getElementById('safenum').onchange = e => { S.safeNum = e.target.checked; event('owner', S.safeNum ? 'Loops now read the next issue number right before they write.' : 'Loops read the next issue number at the start of the run.'); render(); };
+document.getElementById('msgall').onclick = ownerMessage;
+document.getElementById('phase').onclick = togglePhase;
+document.getElementById('loops').onclick = e => {
+  const c = e.target.dataset.close, r = e.target.dataset.restart;
+  if (c) closeSession(c);
+  if (r) restart(r);
+};
+document.getElementById('tabs').onclick = e => { if (e.target.dataset.tab) { tab = e.target.dataset.tab; renderFiles(); } };
+
+reset();
+</script>
+</body>
+</html>
